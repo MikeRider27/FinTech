@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    container_name: python-app
+    ports:
+      - "5500:5000"
+    volumes:
+      - ./Backend/app:/app
+    environment:
+      - FLASK_ENV=development
+      - FLASK_APP=app  # Asegura que Flask reconozca el punto de entrada
+    command: flask run --host=0.0.0.0
+    networks:
+      - app
+
+  react-app:
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile
+    container_name: react-app
+    restart: always
+    volumes:
+      - ./Frontend:/app
+      - /app/node_modules  # Prevents host node_modules from overwriting container node_modules
+    ports:
+      - "3500:3000"
+    networks:
+      - app
+
+networks:
+  app:
+    driver: bridge
