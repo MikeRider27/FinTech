@@ -1,36 +1,61 @@
-version: '3.8'
+name: fintech
 
 services:
-  web:
-    build:
-      context: ./Backend
-      dockerfile: Dockerfile
-    container_name: python-app
-    ports:
-      - "5500:5000"
-    volumes:
-      - ./Backend/app:/app
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
     environment:
-      - FLASK_ENV=development
-      - FLASK_APP=app  # Asegura que Flask reconozca el punto de entrada
-    command: flask run --host=0.0.0.0
-    networks:
-      - app
-
-  react-app:
-    build:
-      context: ./Frontend
-      dockerfile: Dockerfile
-    container_name: react-app
-    restart: always
+      POSTGRES_USER: ${POSTGRES_USER:-fintech}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fintech}
+      POSTGRES_DB: ${POSTGRES_DB:-fintech}
     volumes:
-      - ./Frontend:/app
-      - /app/node_modules  # Prevents host node_modules from overwriting container node_modules
+      - pgdata:/var/lib/postgresql/data
+    # Solo accesible desde esta máquina (para pgAdmin/DBeaver); la app usa la red interna
     ports:
-      - "3500:3000"
+      - "127.0.0.1:${DB_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     networks:
-      - app
+      - backend
+
+  backend:
+    build: ./Backend
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-fintech}:${POSTGRES_PASSWORD:-fintech}@db:5432/${POSTGRES_DB:-fintech}
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-60}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3500,http://localhost:5173}
+      SUPPORTED_CURRENCIES: ${SUPPORTED_CURRENCIES:-USD,EUR,MXN,COP,PEN,CLP,ARS}
+      MAX_TRANSACTION_AMOUNT: ${MAX_TRANSACTION_AMOUNT:-1000000.00}
+    depends_on:
+      db:
+        condition: service_healthy
+    # Swagger en http://localhost:8000/api/docs
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    networks:
+      - backend
+      - frontend
+
+  frontend:
+    build: ./Frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-3500}:80"
+    networks:
+      - frontend
+
+volumes:
+  pgdata:
 
 networks:
-  app:
-    driver: bridge
+  backend:
+  frontend:
